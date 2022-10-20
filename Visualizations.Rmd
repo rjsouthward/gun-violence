@@ -11,9 +11,6 @@ library(tidyverse)
 library(tidycensus)
 library(gganimate)
 library(usmap)
-library(rgl)
-library(rayshader)
-options(rgl.useNULL = FALSE)
 setwd("~/Desktop/Personal-Projects/gun-violence")
 ```
 
@@ -40,14 +37,12 @@ filtered1 <- data |>
 
 
 ```{r}
-options(rgl.useNULL = FALSE)
 
 filtered2 <- filtered1 |>
       filter(Recovery_State == "ALABAMA") |>
-      select(Source_FIPS, as.character(2014)) |>
-      rename("GEOID" = "Source_FIPS", "values" = as.character(2014)) |>
-      mutate(GEOID = as.character(GEOID))
-    
+      select(Source_FIPS, "2014") |>
+      mutate(GEOID = as.character(Source_FIPS))
+
     map <- plot_usmap(data = filtered2, regions = "states") +
       scale_fill_viridis_c()
     
@@ -57,23 +52,140 @@ filtered2 <- filtered1 |>
 ```
 
 ```{r}
-us <- read_sf("data/us") 
+us <- read_sf("data/us") |>
+  
 
 
 
-geo <- left_join(us, filtered2, by = "GEOID") 
-geo[is.na(geo)] <- 0
+#geo <- left_join(us, filtered2, by = "GEOID") 
+#geo[is.na(geo)] <- 0
+
+doc <- geo |> filter(NAME == "District of Columbia")
 
 geo <- geo|>
-  filter(!NAME %in% c("Hawaii", "Puerto Rico", "Alaska", "Guam", "United States Virgin Islands", "Commonwealth of the Northern Mariana Islands", "American Samoa")) |>
-  mutate(policy = sample.int(n = 6, size = 49, replace = TRUE))
+  filter(!NAME %in% c("Puerto Rico", "Guam", "United States Virgin Islands", "Commonwealth of the Northern Mariana Islands", "American Samoa", "District of Columbia")) |>
+  arrange(NAME)
 
-map <- ggplot(data = geo) +
-  geom_sf(aes(fill = policy, color = values))
+  mutate(policy = sample.int(n = 6, size = 49, replace = TRUE), Center_x = state.center$x, Center_y = state.center$y)
 
-plot_gg(map, height_aes = "color")
-render_snapshot()
+ggplot(data = us) +
+  geom_sf()
   
+```
+
+
+```{r}
+library(rnaturalearth)
+library(geosphere)
+
+
+states <- ne_states(iso_a2 = 'US') 
+states@data$name <- toupper(states@data$name)
+
+names <- states@data$name
+data <- read_rds("data/consolidated/combined2010to2020.rds") |>
+group_by(Year, Recovery_State) |>
+filter(Guns_Recovered > quantile(Guns_Recovered, probs = .9)) |>
+ungroup()
+
+coords <- states@data |> select(name, longitude, latitude) 
+
+# Rename lat and long cols to reference Source/Recovery. Makes merge easier later on.  
+Recovery_coords <- coords |> rename(Recovery_long = longitude, Recovery_lat = latitude)
+Source_coords <- coords |> rename(Source_long = longitude, Source_lat = latitude)
+
+# Cross reference - start with Source/Recovery State name, and compare to name in coords
+
+ mainland <- data |> 
+   filter(Recovery_State %in% names) |>
+   filter(Source_State %in% names)
+
+mainland <- left_join(mainland, Recovery_coords, by = c("Recovery_State" = "name"))
+mainland <- left_join(mainland, Source_coords, by = c("Source_State" = "name")) 
+
+#Create Great Circles
+flows <- gcIntermediate(mainland[,5:6], mainland[,7:8], sp = TRUE, addStartEnd = TRUE)
+flows$Recovery_State <- mainland$Recovery_State
+flows$Source_State <- mainland$Source_State
+flows$Guns_Recovered <- mainland$Guns_Recovered
+
+```
+
+
+```{r}
+library(leaflet)
+library(RColorBrewer)
+
+# Create leaflet graph
+
+#origins
+hover <- paste0(flows$Source_State, " to ", 
+#destinations
+                flows$Recovery_State, ': ', 
+                as.character(flows$Guns_Recovered))
+
+pal <- colorFactor(brewer.pal(4, 'Set2'), flows$Source_State)
+
+leaflet() %>%
+  addProviderTiles('CartoDB.Positron') %>%
+  addPolylines(data = flows, weight = ~Guns_Recovered, label = hover, 
+               group = ~Source_State, color = ~pal(Source_State)) %>%
+  addLayersControl(overlayGroups = unique(flows$Source_State), 
+                   options = layersControlOptions(collapsed = FALSE))
+```
+```{r}
+library(urbnmapr)
+
+
+ussf <- urbnmapr::get_urbn_map(map = 'territories_states')
+
+data <- read_rds("data/consolidated/combined2010to2020.rds")
+
+filtered <- data |>
+  filter(Source_State != "Total", Recovery_State != 'Total') |>
+  filter(Source_State != Recovery_State) |>
+  group_by(Recovery_State, Year) |>
+  arrange(desc(Guns_Recovered)) |>
+  slice(1:8) |>
+  ungroup() |>
+  pivot_wider(names_from = Year, values_from = Guns_Recovered) 
+
+combined <- left_join(filtered, get_urbn_labels(map = 'territories'), by = c('Source_State' = 'state_name')) |>
+  filter(Recovery_State == "Illinois") 
+
+ussf <- ussf |>
+  mutate(is_colored = factor(if_else(state_name == "Illinois", 1, 0)))
+
+
+ggplot() +
+  geom_polygon(data = ussf, aes(x = long, y = lat, group = group, fill = is_colored), color = '#ffffff', size = .25) +
+  scale_fill_manual(values = c('#C0C0C0', '#AF251F')) +
+  geom_point(data = combined, aes(x = long, y = lat, size = `2010`), na.rm = TRUE) +
+  coord_map(projection = "albers", lat0 = 39, lat1 = 45) +
+  scale_size_area() +
+  theme(panel.background = element_blank(), axis.title = element_blank(), axis.text = element_blank(), axis.ticks = element_blank(), legend.key=element_blank(), plot.caption = element_text(hjust = 0)) +
+  guides(fill = "none") +
+  labs(title = paste("Origins of Guns Recovered from", "Illinois", "in", "2010"),
+       size = "Guns Sourced from State", 
+       caption = "Source: Bureau of Alcohol, Tobacco, Firearms and Explosives (ATF)") 
+
+```
+
+```{r}
+ggplot(urbnmapr::states) +
+  geom_polygon(aes(x = long, y = lat, group = group))
+
+```
+
+```{r}
+library(maps)
+
+us_geom <- map_data("state")
+
+ggplot() + 
+  geom_polygon( data=us_geom, aes(x=long, y=lat, group=group),
+                color="black", fill="lightblue" )
+
 ```
 
 ```{r}
@@ -211,7 +323,7 @@ center <- 115 # positive values only - US centered view is 260
 # Flat map
   ggplot() +
     geom_polygon(data=worldmap.cp, aes(long.recenter,lat,group=group.regroup), size = 0.2, fill="#f9f9f9", color = "grey65") +
-    geom_line(data= gcircles.rg, aes(long.recenter,lat,group=group.regroup, size=freq), color="red", alpha= 0.5) +
+    geom_line(data= gcircles.rg, aes(long.recenter,lat,group=group.regroup, color=freq), size=0.4, alpha= 0.5) +
     scale_colour_distiller(palette="Reds", name="Frequency", guide = "colorbar") +
     theme_map()+
     ylim(-60, 90) +

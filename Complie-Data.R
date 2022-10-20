@@ -3,6 +3,7 @@ library(tidyverse)
 library(janitor)
 library(readxl)
 library(cdlTools)
+library(tools)
 
 for (year in 2010:2020){
   #Read in xl file that lives on my computer. They can be found on the ATF site 
@@ -39,12 +40,18 @@ condensed[condensed == "GUAM & NORTHERN MARIANA ISLANDS"] <- "GUAM"
 condensed[condensed == "US VIRGIN  ISLANDS" | condensed == "US VIRGIN ISLND" | condensed == "US VIRGIN ISLANDS"] <- "VIRGIN ISLANDS"
 condensed[condensed == "DST OF COLUMBIA"] <- "DISTRICT OF COLUMBIA"
 
+#Covert to title case for convention
+condensed$Recovery_State <- condensed$Recovery_State |> tolower() |> toTitleCase()
+condensed$Source_State <- condensed$Source_State |> tolower() |> toTitleCase()
+
+#! Creation of FIPS column is likely unncessecary. Keep it simple. 
+
 #Creation of a FIPS code column that may be helpful for mapping. 
-condensed <- condensed |>
-  mutate("Source_FIPS" = cdlTools::fips(Source_State, to = "FIPS"))
+#condensed <- condensed |>
+  #mutate("Source_FIPS" = cdlTools::fips(Source_State, to = "FIPS"))
 
 #cdlTools does not include Virgin Islands FIPS, so do it manually. 
-condensed$Source_FIPS <- ifelse(condensed$Source_State == "VIRGIN ISLANDS", 78, condensed$Source_FIPS)
+#condensed$Source_FIPS <- ifelse(condensed$Source_State == "VIRGIN ISLANDS", 78, condensed$Source_FIPS)
 
 #Write final, condensed dataset. 
 write_rds(condensed, "data/consolidated/combined2010to2020.rds")

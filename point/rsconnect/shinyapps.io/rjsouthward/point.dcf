@@ -1,0 +1,13 @@
+name: point
+title:
+username:
+account: rjsouthward
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 6937984
+bundleId: 6276181
+url: https://rjsouthward.shinyapps.io/point/
+when: 1662521584.8781
+lastSyncTime: 1662521584.87811
+asMultiple: FALSE
+asStatic: FALSE

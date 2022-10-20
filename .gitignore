@@ -41,3 +41,6 @@ vignettes/*.pdf
 
 # Large Data files
 data
+
+#Testing file
+Visualizations.Rmd
