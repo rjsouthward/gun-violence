@@ -1,9 +1,10 @@
+library(shiny)
 library(tidyverse)
 library(urbnmapr)
 
 #Import data
 setwd("~/Desktop/Personal-Projects/gun-violence")
-data <- condensed |>
+data <- read_rds("data/consolidated/combined2010to2020.rds") |>
   #Change 'Total' (name attributed by ATF) to United States throughout df
   mutate(Recovery_State = if_else(Recovery_State == 'Total', 'United States', Recovery_State)) |>
   mutate(Source_State = if_else(Source_State == 'Total', 'United States', Source_State))
