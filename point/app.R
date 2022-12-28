@@ -1,6 +1,8 @@
 library(shiny)
-library(rsconnect)
+#For collapsable html panels
+library(shinyBS)
 library(tidyverse)
+#Generate U.S map geoms
 library(urbnmapr)
 
 #Import data
@@ -34,7 +36,10 @@ ui <- fluidPage(
   ),
   fluidRow(
     column(12,
-      dataTableOutput(outputId = 'table')
+      bsCollapsePanel(
+        "Detailed gun flow data ⌄", 
+        dataTableOutput(outputId = 'table')
+      )
     )
   )
     
