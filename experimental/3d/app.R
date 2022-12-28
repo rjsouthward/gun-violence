@@ -4,6 +4,7 @@ library(usmap)
 library(rgl)
 library(rayshader)
 library(sf)
+library(cdlTools)
 
 setwd("~/Desktop/Personal-Projects/gun-violence")
 options(rgl.useNULL = FALSE)
@@ -18,7 +19,11 @@ filtered1 <- data |>
   filter(Guns_Recovered > quantile(Guns_Recovered, probs = .9)) |>
   ungroup() |>
   pivot_wider(names_from = Year, values_from = Guns_Recovered, values_fill = 0) |>
-  arrange(Recovery_State)
+  arrange(Recovery_State) |>
+  mutate("Source_FIPS" = cdlTools::fips(Source_State, to = "FIPS")) |>
+  
+  #cdlTools does not include Virgin Islands FIPS, so do it manually. 
+  mutate(Source_FIPS = ifelse(Source_State == "VIRGIN ISLANDS", 78, Source_FIPS))
 
 ui <- fluidPage(
   sidebarLayout(

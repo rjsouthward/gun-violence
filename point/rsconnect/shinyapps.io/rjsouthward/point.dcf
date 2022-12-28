@@ -5,9 +5,9 @@ account: rjsouthward
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 6937984
-bundleId: 6276181
+bundleId: 6675602
 url: https://rjsouthward.shinyapps.io/point/
-when: 1662521584.8781
-lastSyncTime: 1662521584.87811
+when: 1672129740.17683
+lastSyncTime: 1672129740.17685
 asMultiple: FALSE
 asStatic: FALSE
