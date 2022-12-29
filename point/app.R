@@ -59,6 +59,30 @@ ui <- fluidPage(
 )
 
 server <- function(input, output){
+  dataInput <- reactive({
+    if (input$state == 'United States'){
+      data |>
+        filter(Source_State != 'United States') |>
+        group_by(Recovery_State, Year) |>
+        arrange(desc(Guns_Recovered)) |>
+        slice(1:input$numStates) |>
+        filter(Recovery_State == input$state, Year == input$year) |>
+        mutate(Guns_Recovered_Pct = Guns_Recovered / sum(Guns_Recovered)) |>
+        mutate(Guns_Recovered_Pct_PerCapita = Guns_Recovered_PerCapita / sum(Guns_Recovered_PerCapita)) |>
+        select(Year, Recovery_State, Source_State, Guns_Recovered, Guns_Recovered_Pct, Guns_Recovered_PerCapita, Guns_Recovered_Pct_PerCapita)
+      #display guns recovered from an individual state
+    } else {
+      data |>
+        filter(Source_State != 'United States') |>
+        filter(Recovery_State == input$state, Year == input$year) |>
+        group_by(Recovery_State, Year) |>
+        arrange(desc(Guns_Recovered)) |>
+        slice(1:input$numStates) |>
+        mutate(Guns_Recovered_Pct = Guns_Recovered / sum(Guns_Recovered)) |>
+        mutate(Guns_Recovered_Pct_PerCapita = Guns_Recovered_PerCapita / sum(Guns_Recovered_PerCapita)) |>
+        select(Year, Recovery_State, Source_State, Guns_Recovered, Guns_Recovered_Pct, Guns_Recovered_PerCapita, Guns_Recovered_Pct_PerCapita)
+    }
+  })
   output$plot <- renderPlot({
     #display states that source the most guns across the entire US
     #should check to make sure that I'm not counting guns sourced and recovered in the same state
@@ -95,7 +119,7 @@ server <- function(input, output){
       filtered <- data |>
         filter(Recovery_State != 'United States') |>
         filter(Source_State != 'United States') |>
-        filter(Source_State != Recovery_State) |>
+        #filter(Source_State != Recovery_State) |>
         group_by(Recovery_State, Year) |>
         arrange(desc(Guns_Recovered)) |>
         slice(1:input$numStates) |>
@@ -132,35 +156,7 @@ server <- function(input, output){
   })
   
   output$table <- renderDataTable({
-    if (input$state == 'United States'){
-      
-      table <- data |>
-        filter(Source_State != 'United States') |>
-        group_by(Recovery_State, Year) |>
-        arrange(desc(Guns_Recovered)) |>
-        slice(1:input$numStates) |>
-        filter(Recovery_State == input$state, Year == input$year) |>
-        mutate(Guns_Recovered_Pct = Guns_Recovered / sum(Guns_Recovered)) |>
-        mutate(Guns_Recovered_Pct_PerCapita = Guns_Recovered_PerCapita / sum(Guns_Recovered_PerCapita)) |>
-        select(Year, Recovery_State, Source_State, Guns_Recovered, Guns_Recovered_Pct, Guns_Recovered_PerCapita, Guns_Recovered_Pct_PerCapita)
-      
-      table
-      
-      #display guns recovered from an individual state
-    } else {
-      table <- data |>
-        filter(Recovery_State != 'United States') |>
-        filter(Source_State != 'United States') |>
-        group_by(Recovery_State, Year) |>
-        arrange(desc(Guns_Recovered)) |>
-        slice(1:input$numStates) |>
-        filter(Recovery_State == input$state, Year == input$year) |>
-        mutate(Guns_Recovered_Pct = Guns_Recovered / sum(Guns_Recovered)) |>
-        mutate(Guns_Recovered_Pct_PerCapita = Guns_Recovered_PerCapita / sum(Guns_Recovered_PerCapita)) |>
-        select(Year, Recovery_State, Source_State, Guns_Recovered, Guns_Recovered_Pct, Guns_Recovered_PerCapita, Guns_Recovered_Pct_PerCapita)
-      
-      table
-    }
+    dataInput()
   })
 }
 
