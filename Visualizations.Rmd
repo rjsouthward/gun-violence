@@ -341,3 +341,39 @@ center <- 115 # positive values only - US centered view is 260
     coord_map("ortho", orientation=c(61, 90, 0)) 
 ```
 
+```{r}
+input <- list()
+input$numStates = 8
+input$state = 'United States'
+input$year = '2020'
+
+data <- read_rds("data/consolidated/combined2010to2020.rds") |>
+  #Change 'Total' (name attributed by ATF) to United States throughout df
+  mutate(Recovery_State = if_else(Recovery_State == 'Total', 'United States', Recovery_State)) |>
+  mutate(Source_State = if_else(Source_State == 'Total', 'United States', Source_State)) |>
+  #Filter out Guam and Virigin Islands because of lack of available population data.
+  filter(! Source_State %in% c("Guam", "Virgin Islands")) |>
+  filter(! Recovery_State %in% c("Guam", "Virgin Islands"))
+
+#Adjust gun data to be per 100k people. 
+pop_data <- read_rds("data/consolidated/state-populations-2010-2020.rds") |>
+  pivot_longer(cols = `2010`:`2020`, names_to = "Year", values_to = "Population") |>
+  mutate(Year = as.numeric(Year)) |>
+  as.data.frame()
+
+data <- left_join(data, pop_data, by = c('Source_State' = 'State', 'Year' = 'Year')) |>
+  mutate(Guns_Recovered_PerCapita = (Guns_Recovered * 100000) / Population)
+
+data |>
+        filter(Source_State != 'United States') |>
+        group_by(Recovery_State, Year) |>
+        arrange(desc(Guns_Recovered)) |>
+        slice(1:input$numStates) |>
+        filter(Recovery_State == input$state, Year == input$year) |>
+        mutate(Guns_Recovered_Pct = Guns_Recovered / sum(Guns_Recovered)) |>
+        mutate(Guns_Recovered_Pct_PerCapita = Guns_Recovered_PerCapita / sum(Guns_Recovered_PerCapita)) |>
+        select(Year, Recovery_State, Source_State, Guns_Recovered, Guns_Recovered_Pct, Guns_Recovered_PerCapita, Guns_Recovered_Pct_PerCapita)
+
+
+```
+

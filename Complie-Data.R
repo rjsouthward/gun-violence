@@ -55,3 +55,9 @@ condensed$Source_State <- condensed$Source_State |> tolower() |> toTitleCase()
 
 #Write final, condensed dataset. 
 write_rds(condensed, "data/consolidated/combined2010to2020.rds")
+
+#Compile state population data
+pop_data <- read_csv("data/population-data/state-populations-2010-2020.csv")
+#Fix junk name of first col
+colnames(pop_data)[1] = "State"
+write_rds(pop_data, "data/consolidated/state-populations-2010-2020.rds")
