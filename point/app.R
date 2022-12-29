@@ -23,6 +23,11 @@ pop_data <- read_rds("state-populations-2010-2020.rds") |>
 
 data <- left_join(data, pop_data, by = c('Source_State' = 'State', 'Year' = 'Year')) |>
   mutate(Guns_Recovered_PerCapita = (Guns_Recovered * 100000) / Population)
+
+#Render state geoms
+map <- get_urbn_map(map = 'territories_states') |>
+  #Filter out states with no available data. 
+  filter(! state_name %in% c("American Samoa", "Guam", "Mariana Islands", "Virgin Islands"))
   
 
 ui <- fluidPage(
@@ -38,10 +43,15 @@ ui <- fluidPage(
                   selected = list(2020)),
       numericInput(inputId = "numStates",
                   label = "Select number of states/territories to return:",
-                  min = 0,
+                  min = 1,
                   max = length(unique(data$Recovery_State)),
                   value = 8),
-      submitButton("Submit")
+      checkboxInput(inputId = "perCapita",
+                    label = "Adjust guns recovered to be per 100k people in Source state (suggested)",
+                    value = TRUE),
+      checkboxInput(inputId = "excludeRecovery",
+                    label = "Exclude recovery state from visualization for scale (suggested)",
+                    value = TRUE)
     ),
     column(8,
       plotOutput(outputId = "plot")
@@ -84,75 +94,50 @@ server <- function(input, output){
     }
   })
   output$plot <- renderPlot({
-    #display states that source the most guns across the entire US
-    #should check to make sure that I'm not counting guns sourced and recovered in the same state
-    if (input$state == 'United States'){
-      filtered <- data |>
-        #why does Total still show up?
-        filter(Recovery_State == 'United States', Source_State != 'United States', Source_State != 'Total') |>
-        pivot_wider(names_from = Year, values_from = Guns_Recovered, names_prefix = 'Y') |>
-        arrange(desc(!!sym(paste('Y', input$year, sep = ''))))
+      #dataInput() is the data stored in reactive expression
+      combined <- left_join(dataInput(), get_urbn_labels(map = 'territories'), by = c('Source_State' = 'state_name'))
       
-      combined <- left_join(filtered, get_urbn_labels(map = 'territories'), by = c('Source_State' = 'state_name')) |>
-        arrange(desc(paste('Y', input$year, sep = ''))) |>
-        head(input$numStates)
+      #Determine whether or not to exclude Recovery State 
+      if (input$excludeRecovery) {
+        combined <- combined |> filter(Source_State != Recovery_State)
+      }
+      #Determine if data should be arranged by per capita or raw values. 
+      sizingCol <- ''
+      legendText <- ''
+      if (input$perCapita) {
+        combined <- combined |> arrange(desc(Guns_Recovered_PerCapita))
+        sizingCol = 'Guns_Recovered_PerCapita'
+        legendText = 'per 100k people'
+      } else {
+        combined <- combined |> arrange(desc(Guns_Recovered))
+        sizingCol = 'Guns_Recovered'
+      }
+      combined <- combined |> head(input$numStates)
       
-      map <- get_urbn_map(map = 'territories_states') |>
-        #Filter out states with no available data. 
-        filter(! state_name %in% c("American Samoa", "Guam", "Mariana Islands", "Virgin Islands"))
+      #Determine how to color map (color entire U.S or one state)
+      if (input$state == 'United States') {
+        map <- map |> mutate(is_colored = if_else(state_name %in% as.list(unique(data$Source_State)), TRUE, FALSE))
+      } else {
+        map <- map |> mutate(is_colored = if_else(state_name == input$state, TRUE, FALSE))
+      }
       
-      ggplot() +
-        geom_polygon(data = map, aes(x = long, y = lat, group = group), color = '#ffffff', fill = '#AF251F', size = .25) +
-        geom_point(data = combined, aes_string(x = 'long', y = 'lat', size = paste('Y', input$year, sep = '')), na.rm = TRUE) +
-        #scale_size(range = c(4, 9)) +
-        scale_size_area() +
-        coord_map(projection = "albers", lat0 = 39, lat1 = 45) +
-        theme(panel.background = element_blank(), axis.title = element_blank(), axis.text = element_blank(), axis.ticks = element_blank(), legend.key=element_blank(), plot.caption = element_text(hjust = 0)) +
-        guides(fill = "none") +
-        labs(title = paste("Origins of Guns Recovered from", input$state, "in", input$year),
-             size = "Guns Sourced", 
-             caption = "Source: Bureau of Alcohol, Tobacco, Firearms and Explosives (ATF)") 
-      
-      
-    #display guns recovered from an individual state
-    } else {
-      filtered <- data |>
-        filter(Recovery_State != 'United States') |>
-        filter(Source_State != 'United States') |>
-        #filter(Source_State != Recovery_State) |>
-        group_by(Recovery_State, Year) |>
-        arrange(desc(Guns_Recovered)) |>
-        slice(1:input$numStates) |>
-        ungroup() |>
-        pivot_wider(names_from = Year, values_from = Guns_Recovered, names_prefix = 'Y')
-      
-      combined <- left_join(filtered, get_urbn_labels(map = 'territories'), by = c('Source_State' = 'state_name')) |>
-        filter(Recovery_State == input$state) 
-      
-      # Obtain state polygons (urbnmapr package)
-      map <- get_urbn_map(map = 'territories_states') |>
-        # Create new column to determine if state should be filled
-        mutate(is_colored = factor(if_else(state_name == input$state, 1, 0)))
-      
-      print(combined)
+      #Create plot
       ggplot() +
         geom_polygon(data = map, aes(x = long, y = lat, group = group, fill = is_colored), color = '#ffffff') +
         scale_fill_manual(values = c('#C0C0C0', '#AF251F')) +
-        geom_point(data = combined, aes_string(x = 'long', y = 'lat', size = paste('Y', input$year, sep = '')), na.rm = TRUE) +
+        geom_point(data = combined, aes_string(x = 'long', y = 'lat', size = sizingCol)) +
         scale_size_area() +
         coord_map(projection = "albers", lat0 = 39, lat1 = 45) +
         theme(panel.background = element_blank(), 
               axis.title = element_blank(), 
               axis.text = element_blank(), 
               axis.ticks = element_blank(), 
-              legend.key=element_blank(), 
+              legend.key = element_blank(), 
               plot.caption = element_text(hjust = 0)) +
         guides(fill = "none") +
         labs(title = paste("Origins of Guns Recovered from", input$state, "in", input$year),
-             size = "Guns Sourced", 
-             caption = "Source: Bureau of Alcohol, Tobacco, Firearms and Explosives (ATF)") 
-    }
-    
+             size = paste("Guns Sourced", legendText, sep = ' '), 
+             caption = "Source: Bureau of Alcohol, Tobacco, Firearms and Explosives (ATF)")
   })
   
   output$table <- renderDataTable({

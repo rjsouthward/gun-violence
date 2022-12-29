@@ -344,7 +344,7 @@ center <- 115 # positive values only - US centered view is 260
 ```{r}
 input <- list()
 input$numStates = 8
-input$state = 'United States'
+input$state = 'Illinois'
 input$year = '2020'
 
 data <- read_rds("data/consolidated/combined2010to2020.rds") |>
@@ -355,6 +355,8 @@ data <- read_rds("data/consolidated/combined2010to2020.rds") |>
   filter(! Source_State %in% c("Guam", "Virgin Islands")) |>
   filter(! Recovery_State %in% c("Guam", "Virgin Islands"))
 
+sum(is.na(data$Guns_Recovered))
+
 #Adjust gun data to be per 100k people. 
 pop_data <- read_rds("data/consolidated/state-populations-2010-2020.rds") |>
   pivot_longer(cols = `2010`:`2020`, names_to = "Year", values_to = "Population") |>
@@ -364,16 +366,35 @@ pop_data <- read_rds("data/consolidated/state-populations-2010-2020.rds") |>
 data <- left_join(data, pop_data, by = c('Source_State' = 'State', 'Year' = 'Year')) |>
   mutate(Guns_Recovered_PerCapita = (Guns_Recovered * 100000) / Population)
 
-data |>
+      filtered <- data |>
+        filter(Recovery_State == input$state) |>
         filter(Source_State != 'United States') |>
+        filter(Year == input$year) |>
+        #filter(Source_State != Recovery_State) |>
         group_by(Recovery_State, Year) |>
         arrange(desc(Guns_Recovered)) |>
-        slice(1:input$numStates) |>
-        filter(Recovery_State == input$state, Year == input$year) |>
-        mutate(Guns_Recovered_Pct = Guns_Recovered / sum(Guns_Recovered)) |>
-        mutate(Guns_Recovered_Pct_PerCapita = Guns_Recovered_PerCapita / sum(Guns_Recovered_PerCapita)) |>
-        select(Year, Recovery_State, Source_State, Guns_Recovered, Guns_Recovered_Pct, Guns_Recovered_PerCapita, Guns_Recovered_Pct_PerCapita)
+        slice(1:input$numStates) 
+
+  
 
 
 ```
+
+```{r}
+input <- list()
+input$state = 'United States'
+
+map <- get_urbn_map(map = 'territories_states') |>
+  #Filter out states with no available data. 
+  filter(! state_name %in% c("American Samoa", "Guam", "Mariana Islands", "Virgin Islands"))
+
+      if (input$state == 'United States') {
+        map <- map |> mutate(is_colored = factor(if_else(state_name %in% as.list(unique(data$Source_State)), 1, 0)))
+      } else {
+        map <- map |> mutate(is_colored = factor(if_else(state_name == input$state, 1, 0)))
+      }
+
+map
+```
+
 
