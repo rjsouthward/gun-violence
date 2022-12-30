@@ -60,8 +60,9 @@ ui <- fluidPage(
   fluidRow(
     column(12,
       bsCollapsePanel(
-        "Detailed gun flow data ⌄", 
-        dataTableOutput(outputId = 'table')
+        title = "Detailed gun flow data ⌄", 
+        dataTableOutput(outputId = 'table'),
+        downloadButton("downloadData", "Download")
       )
     )
   )
@@ -143,6 +144,15 @@ server <- function(input, output){
   output$table <- renderDataTable({
     dataInput()
   })
+  
+  output$downloadData <- downloadHandler(
+    filename = function() {
+      paste("data-", Sys.Date(), ".csv", sep="")
+    },
+    content = function(file) {
+      write.csv(dataInput(), file)
+    }
+  )
 }
 
 shinyApp(ui = ui, server = server)
