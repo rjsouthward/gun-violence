@@ -6,8 +6,7 @@ library(tidyverse)
 library(urbnmapr)
 
 #Import data
-#setwd("~/Desktop/Personal-Projects/gun-violence")
-data <- read_rds("combined2010to2020.rds") |>
+data <- read_rds("data/combined2010to2020.rds") |>
   #Change 'Total' (name attributed by ATF) to United States throughout df
   mutate(Recovery_State = if_else(Recovery_State == 'Total', 'United States', Recovery_State)) |>
   mutate(Source_State = if_else(Source_State == 'Total', 'United States', Source_State)) |>
@@ -16,7 +15,7 @@ data <- read_rds("combined2010to2020.rds") |>
   filter(! Recovery_State %in% c("Guam", "Virgin Islands"))
 
 #Adjust gun data to be per 100k people. 
-pop_data <- read_rds("state-populations-2010-2020.rds") |>
+pop_data <- read_rds("data/state-populations-2010-2020.rds") |>
   pivot_longer(cols = `2010`:`2020`, names_to = "Year", values_to = "Population") |>
   mutate(Year = as.numeric(Year)) |>
   as.data.frame()
