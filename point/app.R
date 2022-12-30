@@ -117,7 +117,9 @@ server <- function(input, output){
       
       #Determine how to color map (color entire U.S or one state)
       if (input$state == 'United States') {
-        map <- map |> mutate(is_colored = if_else(state_name %in% as.list(unique(data$Source_State)), TRUE, FALSE))
+        stateList <- state.name
+        stateList <- append(stateList, 'Puerto Rico')
+        map <- map |> mutate(is_colored = if_else(state_name %in% stateList, TRUE, FALSE))
       } else {
         map <- map |> mutate(is_colored = if_else(state_name == input$state, TRUE, FALSE))
       }
