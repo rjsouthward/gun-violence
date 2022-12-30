@@ -95,9 +95,14 @@ for (state_abb in state.abb) {
       add_column(State_Name = names[state_abb], .before = "Provision_Name") |>
       add_column(Year = year, .after = "State_Name")
     #Compile data
-    data <- rbind(provision_data, df)
+    provision_data <- rbind(provision_data, df)
   }
 }
+
+#Convert columns to better data types
+provision_data <- provision_data |> 
+  mutate(Year = as.integer(Year)) |>
+  mutate(Provision_Name = as.factor(Provision_Name))
 
 #Write dataset
 write_rds(provision_data, "data/consolidated/state-provisions-2010-2018.rds")

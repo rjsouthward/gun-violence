@@ -1,0 +1,48 @@
+---
+title: "Analysis"
+author: "Ryan Southward"
+date: "2022-12-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+```{r}
+gunflow <- read_rds('data/consolidated/combined2010to2020.rds')
+provisions <- read_rds('data/consolidated/state-provisions-2010-2018.rds')
+
+#provisions don't include DOC and Puerto Rico, so add junk data. 
+for (name in c("District of Columbia", "Puerto Rico")) {
+  for (year in 2010:2018) {
+    provisions <- rbind(provisions, c(name, year, NA, NA, NA))
+  }
+}
+
+#provision data only goes up to 2018, so add junk data for years 2019 and 2020
+state_names <- state.name
+state_names <- append(state_names, c("District of Columbia", "Puerto Rico"))
+
+for (name in state_names) {
+  for (year in 2019:2020) {
+    provisions <- rbind(provisions, c(name, year, NA, NA, NA))
+  }
+}
+
+provisions <- provisions |> 
+  mutate(Year = as.integer(Year)) |>
+  mutate(Provision_Name = as.factor(Provision_Name))
+
+
+combined <- left_join(gunflow, provisions, by = c('Source_State' = 'State_Name', 'Year' = 'Year'))
+
+#issue is that I want absent laws, not existing laws though. 
+combined |>
+  group_by(Provision_Name) |>
+  summarize(n = sum(Guns_Recovered))
+
+
+```
+

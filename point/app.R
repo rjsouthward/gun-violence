@@ -27,7 +27,9 @@ data <- left_join(data, pop_data, by = c('Source_State' = 'State', 'Year' = 'Yea
 map <- get_urbn_map(map = 'territories_states') |>
   #Filter out states with no available data. 
   filter(! state_name %in% c("American Samoa", "Guam", "Mariana Islands", "Virgin Islands"))
-  
+
+stateList <- state.name
+stateList <- append(stateList, 'Puerto Rico')
 
 ui <- fluidPage(
   fluidRow(
@@ -121,8 +123,6 @@ server <- function(input, output){
       
       #Determine how to color map (color entire U.S or one state)
       if (input$state == 'United States') {
-        stateList <- state.name
-        stateList <- append(stateList, 'Puerto Rico')
         map <- map |> mutate(is_colored = if_else(state_name %in% stateList, TRUE, FALSE))
       } else {
         map <- map |> mutate(is_colored = if_else(state_name == input$state, TRUE, FALSE))
