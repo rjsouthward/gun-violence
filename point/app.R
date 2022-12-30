@@ -71,8 +71,9 @@ ui <- fluidPage(
 
 server <- function(input, output){
   dataInput <- reactive({
+    toArrange <- NULL
     if (input$state == 'United States'){
-      data |>
+      toArrange <- data |>
         filter(Source_State != 'United States') |>
         group_by(Recovery_State, Year) |>
         arrange(desc(Guns_Recovered)) |>
@@ -83,7 +84,7 @@ server <- function(input, output){
         select(Year, Recovery_State, Source_State, Guns_Recovered, Guns_Recovered_Pct, Guns_Recovered_PerCapita, Guns_Recovered_Pct_PerCapita)
       #display guns recovered from an individual state
     } else {
-      data |>
+      toArrange <- data |>
         filter(Source_State != 'United States') |>
         filter(Recovery_State == input$state, Year == input$year) |>
         group_by(Recovery_State, Year) |>
@@ -92,6 +93,12 @@ server <- function(input, output){
         mutate(Guns_Recovered_Pct = Guns_Recovered / sum(Guns_Recovered)) |>
         mutate(Guns_Recovered_Pct_PerCapita = Guns_Recovered_PerCapita / sum(Guns_Recovered_PerCapita)) |>
         select(Year, Recovery_State, Source_State, Guns_Recovered, Guns_Recovered_Pct, Guns_Recovered_PerCapita, Guns_Recovered_Pct_PerCapita)
+    }
+    #Determine if data should be arranged by per capita or raw values. 
+    if (input$perCapita) {
+      data <- toArrange |> arrange(desc(Guns_Recovered_PerCapita))
+    } else {
+      data <- toArrange |> arrange(desc(Guns_Recovered))
     }
   })
   output$plot <- renderPlot({
@@ -106,11 +113,9 @@ server <- function(input, output){
       sizingCol <- ''
       legendText <- ''
       if (input$perCapita) {
-        combined <- combined |> arrange(desc(Guns_Recovered_PerCapita))
         sizingCol = 'Guns_Recovered_PerCapita'
         legendText = 'per 100k people'
       } else {
-        combined <- combined |> arrange(desc(Guns_Recovered))
         sizingCol = 'Guns_Recovered'
       }
       combined <- combined |> head(input$numStates)
