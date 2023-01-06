@@ -104,5 +104,14 @@ provision_data <- provision_data |>
   mutate(Year = as.integer(Year)) |>
   mutate(Provision_Name = as.factor(Provision_Name))
 
-#Write dataset
 write_rds(provision_data, "data/consolidated/state-provisions-2010-2018.rds")
+
+#Dataset for state adjacency
+adjacency <- read_csv("data/state-adjacency/adjacency.csv") |>
+#Add data for district of columbia
+rbind(c("DC", "MD")) |>
+rbind(c("DC", "VA")) |>
+rbind(c("MD", "DC")) |>
+rbind(c("VA", "DC"))
+
+write_rds(adjacency, "data/consolidated/state-adjacency.rds")

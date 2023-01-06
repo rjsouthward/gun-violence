@@ -8,10 +8,17 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+library(scales)
 ```
 
 ```{r}
-gunflow <- read_rds('data/consolidated/combined2010to2020.rds')
+gunflow <- read_rds('data/consolidated/combined2010to2020.rds') |>
+  #Change 'Total' (name attributed by ATF) to United States throughout df
+  mutate(Recovery_State = if_else(Recovery_State == 'Total', 'United States', Recovery_State)) |>
+  mutate(Source_State = if_else(Source_State == 'Total', 'United States', Source_State)) |>
+  #Filter out Guam and Virigin Islands because of lack of available population data.
+  filter(! Source_State %in% c("Guam", "Virgin Islands")) |>
+  filter(! Recovery_State %in% c("Guam", "Virgin Islands"))
 provisions <- read_rds('data/consolidated/state-provisions-2010-2018.rds')
 
 #provisions don't include DOC and Puerto Rico, so add junk data. 
@@ -31,18 +38,269 @@ for (name in state_names) {
   }
 }
 
+all_provisions <- as.vector(unique(provisions$Provision_Name)) 
+all_provisions <- all_provisions[!is.na(all_provisions)]
+
+
+
 provisions <- provisions |> 
   mutate(Year = as.integer(Year)) |>
   mutate(Provision_Name = as.factor(Provision_Name))
 
 
-combined <- left_join(gunflow, provisions, by = c('Source_State' = 'State_Name', 'Year' = 'Year'))
+provisions <- provisions |>
+  group_nest(State_Name, Year, .key = "Provision_List") |>
+  mutate(Absent_Laws = map(Provision_List, ~ setdiff(all_provisions, .$Provision_Name))) |>
+  mutate(Current_Laws = map(Provision_List, ~.$Provision_Name)) |>
+  select(-Provision_List) 
 
-#issue is that I want absent laws, not existing laws though. 
-combined |>
-  group_by(Provision_Name) |>
-  summarize(n = sum(Guns_Recovered))
+
+#
+# Above this point we have the data set we will pull from each time portal is updated. 
+#
+
+
+
+input <- list()
+input$state = 'Illinois'
+input$year = 2012
+input$numStates = 14
+
+alert <- TRUE
+
+density <- left_join(gunflow, provisions, by = c('Source_State' = 'State_Name', 'Year' = 'Year')) |>
+  filter(Year == input$year) |>
+  unnest(Absent_Laws) |>
+  group_by(Absent_Laws) |>
+  summarize(Total_Guns_Recovered = sum(Guns_Recovered)) |>
+  arrange(desc(Total_Guns_Recovered)) |>
+  rowid_to_column("Provision_Number")
+
+all_states <- left_join(gunflow, provisions, by = c('Source_State' = 'State_Name', 'Year' = 'Year')) |>
+  filter(Recovery_State == input$state, Year == input$year) |>
+  arrange(desc(Guns_Recovered)) 
+
+msg <- ''
+if (input$year > 2018) {
+  msg = 'Warning: State provision data is currently only available until 2018. Would you like to populate state provision portal with 2018 data? (Will not effect gun flow portal)'
+} 
+
+if (alert) {
+  #fillna
+} else {
+  combined <- combined |> drop_na()
+}
+
+  
+#Create dots for each state
+state_viz <- all_states |>
+  filter(Source_State != 'United States') |>
+  arrange(desc(Guns_Recovered)) |>
+  head(input$numStates) |>
+  mutate(Num_Absent_Laws = map(Absent_Laws, ~ length(.))) |>
+  unnest(Num_Absent_Laws) |>
+  arrange(desc(Num_Absent_Laws)) |>
+  rowid_to_column("State_Number") |>
+  unnest(Absent_Laws)
+
+prov_nums <- density |> select(-Total_Guns_Recovered)
+
+state_viz <- right_join(prov_nums, state_viz, by = c('Absent_Laws' = 'Absent_Laws'))
+
+
+#Evenly spaced states or in proportion to guns recovered?
+# ggplot() +
+#   geom_line(data = summarized_laws, mapping = aes(x = Provision_Number, y = Total_Guns_Recovered)) +
+#   scale_x_continuous(breaks = seq(from = 1, to = length(all_provisions), by = 4)) +
+#   geom_point(data = state_viz, mapping = aes(x = Provision_Number, y = State_Number * (max(density$Total_Guns_Recovered)/length(unique(state_viz$Source_State))), color = Source_State)) +
+#   #Make sure if its for entire united states, no scientific notation!
+#   scale_y_continuous(
+#     "Total Guns Recovered by Absent Law", 
+#     sec.axis = sec_axis(~ . / (max(density$Total_Guns_Recovered)/length(unique(state_viz$Source_State))), name = "State")
+#   )
+
+# (max(density$Total_Guns_Recovered) / (length(unique(state_viz$Source_State)) * 2))
+
+# ggplot() +
+#   geom_line(data = density, mapping = aes(x = Provision_Number, y = Total_Guns_Recovered)) +
+#   scale_x_continuous(breaks = seq(from = 1, to = length(all_provisions), by = 4)) +
+#   geom_point(data = state_viz, mapping = aes(x = Provision_Number, y = State_Number, color = Source_State)) +
+#   #Make sure if its for entire united states, no scientific notation!
+#   scale_y_continuous("Total Guns Recovered by Absent Law", 
+#                      labels = label_comma(), 
+#                      sec.axis = sec_axis(~ . / (max(density$Total_Guns_Recovered) / (length(unique(state_viz$Source_State)) * 2)), name = "State"))
+
+ggplot() +
+  scale_x_continuous(breaks = seq(from = 1, to = length(all_provisions), by = 4)) +
+  geom_point(data = state_viz, mapping = aes(x = Provision_Number, y = State_Number * (max(density$Total_Guns_Recovered) / max(State_Number)), color = Source_State)) +
+  #Make sure if its for entire united states, no scientific notation!
+geom_line(data = density, mapping = aes(x = Provision_Number, y = Total_Guns_Recovered)) +
+  scale_y_discrete(limits = unique(state_viz$Source_State), breaks = unique(state_viz$Source_State)) +
+  expand_limits(x = 1, y = max(density$Total_Guns_Recovered)*1.05)
+
 
 
 ```
+
+```{r}
+gunflow <- read_rds('data/consolidated/combined2010to2020.rds') |>
+  #Change 'Total' (name attributed by ATF) to United States throughout df
+  mutate(Recovery_State = if_else(Recovery_State == 'Total', 'United States', Recovery_State)) |>
+  mutate(Source_State = if_else(Source_State == 'Total', 'United States', Source_State)) |>
+  #Filter out Guam and Virigin Islands because of lack of available population data.
+  filter(! Source_State %in% c("Guam", "Virgin Islands")) |>
+  filter(! Recovery_State %in% c("Guam", "Virgin Islands")) |>
+  filter(Source_State != "United States")
+
+provisions <- read_rds('data/consolidated/state-provisions-2010-2018.rds') |>
+  filter(Current_Status != "Repealed") |>
+  select(-Current_Status)
+
+prov_descs <- as.vector(unique(provisions$Provision_Description))
+#Add missing description in data
+prov_descs <- append(prov_descs, "No additional finding is required before the firearm surrender provisions apply", after = 62)
+
+#save data frame of provision descriptions and names for matching later. 
+matching <- data.frame(Provision_Name = as.vector(unique(provisions$Provision_Name)),
+                       Provision_Description = prov_descs)
+
+#provision data only goes up to 2018, so add junk data for years 2019 and 2020
+state_names <- state.name
+state_names <- append(state_names, c("District of Columbia", "Puerto Rico"))
+
+
+all_provisions <- expand_grid(State_Name = state_names,
+                              Year = 2010:2020,
+                              Provision_Name = as.vector(unique(provisions$Provision_Name)))
+
+#Drop Provision Descriptions and match them later. 
+provisions <- provisions |> select(-Provision_Description)
+
+#Create status codes for color coding.
+provisions <- provisions |>
+  #This is incorrect: some states/years have no data, but we will correct later. 
+  mutate(Status_Code = "Has Provision") |>
+  #Fix years appearing as type char
+  mutate(Year = as.integer(Year)) 
+```
+
+Why does canada appear some places?
+
+```{r}
+all_provisions <- left_join(all_provisions, provisions, by = c("State_Name" = "State_Name", "Year" = "Year", "Provision_Name" = "Provision_Name")) |>
+  #Add laws that states are missing to 'Status_Code'
+  mutate(Status_Code = if_else(is.na(Status_Code), "Missing Provision", Status_Code)) |>
+  #No data for PR or DOC. 
+  mutate(Status_Code = if_else(State_Name %in% c("Puerto Rico", "District of Columbia"), "No Data", Status_Code)) |>
+  #Data only goes up until Y2018.
+  mutate(Status_Code = if_else(Year %in% 2019:2020, "No Data", Status_Code)) |>
+  mutate(Status_Code = as.factor(Status_Code))
+
+provision_data <- left_join(gunflow, all_provisions, by = c("Source_State" = "State_Name", "Year" = "Year")) 
+
+#
+# Reactive data only to be updated every time plot has new input
+#
+
+# Include adjacent states:
+state_adjacency <- read_rds("data/consolidated/state-adjacency.rds")
+
+state_abbs <- state.abb
+state_abbs <- append(state_abbs, "DC", after = 7)
+
+state_names <- state.name
+state_names <- append(state_names, "District of Columbia", after = 7)
+
+abb_name_matching <- data.frame(abb = state_abbs, name = state_names)
+
+
+#User input
+input <- list()
+input$state = 'Illinois'
+input$year = 2018
+input$numStates = 14
+
+ui_partial <- provision_data |>
+  filter(Year == input$year, Recovery_State == input$state)
+
+adj_data <- left_join(state_adjacency, abb_name_matching, by = c("StateCode" = "abb"))
+adj_states <- left_join(adj_data, abb_name_matching, by = c("NeighborStateCode" ="abb")) |>
+  select(3:4) |>
+  rename("State" = "name.x", "Neighbor" = "name.y") |>
+  filter(State == input$state) |>
+  pull(Neighbor)
+  
+  
+#Filter to be the top n states
+reactive_data <- ui_partial |>
+  arrange(desc(Guns_Recovered)) |>
+  group_by(Recovery_State, Source_State, Guns_Recovered, Year) |>
+  nest() |>
+  head(input$numStates) |>
+  ungroup() |>
+  unnest() 
+
+#Add back adjacent state data
+  reactive_data <- rbind(reactive_data, ui_partial |>
+                           filter(Source_State %in% adj_states)) |>
+    distinct() |>
+    arrange(desc(Guns_Recovered))
+
+#
+# Outside of reactive header. 
+#
+
+#Might change this line of code to do gun outflow
+density <- provision_data |> 
+  filter(Year == input$year, Status_Code == "Missing Provision") |>
+  group_by(Provision_Name) |>
+  summarize(Total_Guns_Recovered = sum(Guns_Recovered)) |>
+  arrange(desc(Total_Guns_Recovered)) |>
+  rowid_to_column("Provision_Number")
+
+#For educational purposes
+meaningful_laws <- left_join(density, matching, by = "Provision_Name")
+
+#Code to sort by number of missing laws, maybe come back to later.
+
+# state_viz <- reactive_data |>
+#   group_by(Recovery_State, Source_State, Guns_Recovered, Year) |>
+#   mutate(Num_Absent_Laws = sum(Status_Code == "Missing Provision")) |>
+#   arrange(desc(Num_Absent_Laws)) |>
+#   mutate(State_Number = cur_group_id())
+
+state_viz <- reactive_data |>
+  group_by(Recovery_State, Source_State, Guns_Recovered, Year) |>
+  mutate(State_Number = cur_group_id())
+
+prov_nums <- density |> select(-Total_Guns_Recovered)
+
+state_viz <- right_join(prov_nums, state_viz, by = c('Provision_Name' = 'Provision_Name'))
+
+chart_max <- max(density$Total_Guns_Recovered)
+states <- unique(state_viz$Source_State)
+
+bold_tick_labels <- sapply(states, function(x) if_else(x %in% adj_states, "bold", "plain"))
+
+# ggplot() +
+#   scale_x_continuous(breaks = seq(from = 1, to = length(matching$Provision_Name), by = 4)) +
+#   #Make sure if its for entire united states, no scientific notation!
+# geom_line(data = density, mapping = aes(x = Provision_Number, y = Total_Guns_Recovered)) +
+#   geom_point(data = state_viz, mapping = aes(x = Provision_Number, y = State_Number * (chart_max / length(states)), color = Status_Code)) +
+#   scale_y_continuous(breaks = seq(from = 0, to = chart_max, by = chart_max / length(states))[-1], labels = states) +
+#   theme(axis.text.y = element_text(face = bold_tick_labels)) +
+#   theme(axis.text.x = element_text(angle = 90)) +
+#   geom_richtext(aes(x = 25, y = chart_max/length(states)*.65, label = "Absent provisions associated<br>with **many** guns recovered*"),
+#                 fill = NA,
+#                 label.color = NA) +
+#   geom_richtext(aes(x = 110, y = chart_max/length(states)*.65, label = "Absent provisions associated<br>with **few** guns recovered*"), 
+#                 fill = NA,
+#                 label.color = NA) 
+  # annotate("text", x = 25, y = chart_max/length(states)*.65, label = "Absent provisions associated\nwith **many** guns recovered") +
+  # annotate("text", x = 110, y = chart_max/length(states)*.65, label = "Absent provisions associated\nwith **few** guns recovered") +
+  #coord_cartesian(clip = "off")
+
+
+```
+
 

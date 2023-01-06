@@ -4,6 +4,8 @@ library(shinyBS)
 library(tidyverse)
 #Generate U.S map geoms
 library(urbnmapr)
+#Plot annotations
+library(ggtext)
 
 #Import data
 data <- read_rds("data/combined2010to2020.rds") |>
@@ -71,14 +73,13 @@ ui <- fluidPage(
 )
 
 server <- function(input, output){
-  dataInput <- reactive({
+  gunFlowData <- reactive({
     toArrange <- NULL
     if (input$state == 'United States'){
       toArrange <- data |>
         filter(Source_State != 'United States') |>
         group_by(Recovery_State, Year) |>
         arrange(desc(Guns_Recovered)) |>
-        slice(1:input$numStates) |>
         filter(Recovery_State == input$state, Year == input$year) |>
         mutate(Guns_Recovered_Pct = Guns_Recovered / sum(Guns_Recovered)) |>
         mutate(Guns_Recovered_Pct_PerCapita = Guns_Recovered_PerCapita / sum(Guns_Recovered_PerCapita)) |>
@@ -90,21 +91,21 @@ server <- function(input, output){
         filter(Recovery_State == input$state, Year == input$year) |>
         group_by(Recovery_State, Year) |>
         arrange(desc(Guns_Recovered)) |>
-        slice(1:input$numStates) |>
         mutate(Guns_Recovered_Pct = Guns_Recovered / sum(Guns_Recovered)) |>
         mutate(Guns_Recovered_Pct_PerCapita = Guns_Recovered_PerCapita / sum(Guns_Recovered_PerCapita)) |>
         select(Year, Recovery_State, Source_State, Guns_Recovered, Guns_Recovered_Pct, Guns_Recovered_PerCapita, Guns_Recovered_Pct_PerCapita)
     }
     #Determine if data should be arranged by per capita or raw values. 
     if (input$perCapita) {
-      data <- toArrange |> arrange(desc(Guns_Recovered_PerCapita))
+      toArrange <- toArrange |> arrange(desc(Guns_Recovered_PerCapita))
     } else {
-      data <- toArrange |> arrange(desc(Guns_Recovered))
+      toArrange <- toArrange |> arrange(desc(Guns_Recovered))
     }
+    toArrange
   })
   output$plot <- renderPlot({
-      #dataInput() is the data stored in reactive expression
-      combined <- left_join(dataInput(), get_urbn_labels(map = 'territories'), by = c('Source_State' = 'state_name'))
+      #gunFlowData() is the data stored in reactive expression
+      combined <- left_join(gunFlowData(), get_urbn_labels(map = 'territories'), by = c('Source_State' = 'state_name'))
       
       #Determine whether or not to exclude Recovery State 
       if (input$excludeRecovery) {
@@ -148,7 +149,7 @@ server <- function(input, output){
   })
   
   output$table <- renderDataTable({
-    dataInput()
+    gunFlowData()
   })
   
   output$downloadData <- downloadHandler(
@@ -156,7 +157,7 @@ server <- function(input, output){
       paste("data-", Sys.Date(), ".csv", sep="")
     },
     content = function(file) {
-      write.csv(dataInput(), file)
+      write.csv(gunFlowData(), file)
     }
   )
 }
