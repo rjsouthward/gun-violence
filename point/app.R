@@ -36,42 +36,47 @@ stateList <- state.name
 stateList <- append(stateList, 'Puerto Rico')
 
 ui <- fluidPage(
-  fluidRow(
+  navbarPage(
+  "Gun FlowR",
+  tabPanel("Portal", fluidRow(
     column(4,
-      selectInput(inputId = "state",
-                  label = "Select state:",
-                  choices = as.list(unique(data$Source_State)),
-                  selected = list('United States')),
-      selectInput(inputId = "year",
-                  label = "Select year:",
-                  choices = as.list(seq(from = 2010, to = 2020)),
-                  selected = list(2020)),
-      numericInput(inputId = "numStates",
-                  label = "Select number of states/territories to return:",
-                  min = 1,
-                  max = length(unique(data$Recovery_State)),
-                  value = 8),
-      checkboxInput(inputId = "perCapita",
-                    label = "Adjust guns recovered to be per 100k people in Source state (suggested)",
-                    value = TRUE),
-      checkboxInput(inputId = "excludeRecovery",
-                    label = "Exclude recovery state from visualization for scale (suggested)",
-                    value = TRUE)
+           selectInput(inputId = "state",
+                       label = "Select state:",
+                       choices = as.list(unique(data$Source_State)),
+                       selected = list('United States')),
+           selectInput(inputId = "year",
+                       label = "Select year:",
+                       choices = as.list(seq(from = 2010, to = 2020)),
+                       selected = list(2020)),
+           numericInput(inputId = "numStates",
+                        label = "Select number of states/territories to return:",
+                        min = 1,
+                        max = length(unique(data$Recovery_State)),
+                        value = 8),
+           checkboxInput(inputId = "perCapita",
+                         label = "Adjust guns recovered to be per 100k people in Source state (suggested)",
+                         value = TRUE),
+           checkboxInput(inputId = "excludeRecovery",
+                         label = "Exclude recovery state from visualization for scale (suggested)",
+                         value = TRUE)
     ),
     column(8,
-      plotOutput(outputId = "plot")
+           plotOutput(outputId = "plot")
     ), 
   ),
   fluidRow(
     column(12,
-      bsCollapsePanel(
-        title = "Detailed gun flow data ⌄", 
-        dataTableOutput(outputId = 'table'),
-        downloadButton("downloadData", "Download")
-      )
+           bsCollapsePanel(
+             title = "Detailed gun flow data ⌄", 
+             dataTableOutput(outputId = 'table'),
+             downloadButton("downloadData", "Download")
+           )
     )
+  )),
+  tabPanel("Action", "filler"),
+  tabPanel("Experimental", "filler"),
+  tabPanel("About", "filler")
   )
-    
 )
 
 server <- function(input, output){
