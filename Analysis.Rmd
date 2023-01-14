@@ -187,6 +187,9 @@ provisions <- provisions |>
 Why does canada appear some places?
 
 ```{r}
+
+library(ggtext)
+
 all_provisions <- left_join(all_provisions, provisions, by = c("State_Name" = "State_Name", "Year" = "Year", "Provision_Name" = "Provision_Name")) |>
   #Add laws that states are missing to 'Status_Code'
   mutate(Status_Code = if_else(is.na(Status_Code), "Missing Provision", Status_Code)) |>
@@ -216,7 +219,7 @@ abb_name_matching <- data.frame(abb = state_abbs, name = state_names)
 
 #User input
 input <- list()
-input$state = 'Illinois'
+input$state = 'District of Columbia'
 input$year = 2018
 input$numStates = 14
 
@@ -282,25 +285,71 @@ states <- unique(state_viz$Source_State)
 
 bold_tick_labels <- sapply(states, function(x) if_else(x %in% adj_states, "bold", "plain"))
 
-# ggplot() +
-#   scale_x_continuous(breaks = seq(from = 1, to = length(matching$Provision_Name), by = 4)) +
-#   #Make sure if its for entire united states, no scientific notation!
-# geom_line(data = density, mapping = aes(x = Provision_Number, y = Total_Guns_Recovered)) +
-#   geom_point(data = state_viz, mapping = aes(x = Provision_Number, y = State_Number * (chart_max / length(states)), color = Status_Code)) +
-#   scale_y_continuous(breaks = seq(from = 0, to = chart_max, by = chart_max / length(states))[-1], labels = states) +
-#   theme(axis.text.y = element_text(face = bold_tick_labels)) +
-#   theme(axis.text.x = element_text(angle = 90)) +
-#   geom_richtext(aes(x = 25, y = chart_max/length(states)*.65, label = "Absent provisions associated<br>with **many** guns recovered*"),
-#                 fill = NA,
-#                 label.color = NA) +
-#   geom_richtext(aes(x = 110, y = chart_max/length(states)*.65, label = "Absent provisions associated<br>with **few** guns recovered*"), 
-#                 fill = NA,
-#                 label.color = NA) 
-  # annotate("text", x = 25, y = chart_max/length(states)*.65, label = "Absent provisions associated\nwith **many** guns recovered") +
-  # annotate("text", x = 110, y = chart_max/length(states)*.65, label = "Absent provisions associated\nwith **few** guns recovered") +
-  #coord_cartesian(clip = "off")
+ggplot() +
+  scale_x_continuous(breaks = seq(from = 1, to = length(matching$Provision_Name), by = 4)) +
+  #Make sure if its for entire united states, no scientific notation!
+geom_line(data = density, mapping = aes(x = Provision_Number, y = Total_Guns_Recovered)) +
+  geom_point(data = state_viz, mapping = aes(x = Provision_Number, y = State_Number * (chart_max / length(states)), color = Status_Code)) +
+  scale_y_continuous(breaks = seq(from = 0, to = chart_max, by = chart_max / length(states))[-1], labels = states) +
+  theme(axis.text.y = element_text(face = bold_tick_labels)) +
+  theme(axis.text.x = element_text(angle = 90)) +
+  geom_richtext(aes(x = 25, y = chart_max/length(states)*.65, label = "Absent provisions associated<br>with **many** guns recovered*"),
+                fill = NA,
+                label.color = NA) +
+  geom_richtext(aes(x = 110, y = chart_max/length(states)*.65, label = "Absent provisions associated<br>with **few** guns recovered*"),
+                fill = NA,
+                label.color = NA)
+
 
 
 ```
 
+```{r}
+library(heatmaply)
+library(crosstalk)
+
+
+state_prov_matrix <- state_viz |>
+  select(Provision_Number, Source_State, Status_Code) |>
+  mutate(Status_Code = as.character(Status_Code)) |>
+  mutate(Status_Code = ifelse(Status_Code == "No Data", NA, Status_Code)) |>
+  mutate(Status_Code = ifelse(Status_Code == "Missing Provision", 0, 1)) |>
+  pivot_wider(id_cols = Source_State, names_from = Provision_Number, values_from = Status_Code) |>
+  column_to_rownames("Source_State")
+
+provisions_ct <- SharedData$new(state_prov_matrix, key = ~Provision_Number, group = "provisions")
+density_ct <- SharedData$new(density, key = ~Provision_Number, group = "provisions")
+
+# mat_size <- state_viz |>
+#   pivot_wider(id_cols = Source_State, names_from = Provision_Name, values_from = Guns_Recovered)
+
+hm <- heatmaply(state_prov_matrix, Rowv = FALSE, Colv = FALSE, plot_method = "plotly", showticklabels = c(FALSE, TRUE))
+line <- ggplot() +
+  #scale_x_continuous(breaks = seq(from = 1, to = length(matching$Provision_Name), by = 4)) +
+  #Make sure if its for entire united states, no scientific notation!
+ geom_point(data = density |> arrange(desc(Total_Guns_Recovered)), mapping = aes(x = Provision_Number, y = Total_Guns_Recovered))
+
+hm_ly <- ggplotly(hm)
+line_ly <- plot_ly(line)
+
+bscols(hm_ly, line_ly)
+```
+
+```{r}
+provisions_ct <- SharedData$new(state_viz, key = ~Provision_Number, group = "provisions")
+density_ct <- SharedData$new(density, key = ~Provision_Number, group = "provisions")
+
+hm <- ggplot() +
+  geom_tile(data = state_viz, mapping = aes(x = Provision_Number, y = Source_State, fill = Status_Code))
+
+line <- ggplot() +
+  #scale_x_continuous(breaks = seq(from = 1, to = length(matching$Provision_Name), by = 4)) +
+  #Make sure if its for entire united states, no scientific notation!
+ geom_point(data = density |> arrange(desc(Total_Guns_Recovered)), mapping = aes(x = Provision_Number, y = Total_Guns_Recovered))
+
+hm_ly <- ggplotly(hm)
+line_ly <- ggplotly(line)
+
+bscols(hm_ly, line_ly)
+```
 

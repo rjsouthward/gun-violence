@@ -6,6 +6,8 @@ library(tidyverse)
 library(urbnmapr)
 #Plot annotations
 library(ggtext)
+#Interactive Plots
+library(plotly)
 
 #Import data
 data <- read_rds("data/combined2010to2020.rds") |>
@@ -130,7 +132,7 @@ server <- function(input, output){
       }
       
       #Create plot
-      ggplot() +
+      plot <- ggplot() +
         geom_polygon(data = map, aes(x = long, y = lat, group = group, fill = is_colored), color = '#ffffff') +
         scale_fill_manual(values = c('#C0C0C0', '#AF251F')) +
         geom_point(data = combined, aes_string(x = 'long', y = 'lat', size = sizingCol)) +
@@ -146,6 +148,9 @@ server <- function(input, output){
         labs(title = paste("Origins of Guns Recovered from", input$state, "in", input$year),
              size = paste("Guns Sourced", legendText, sep = ' '), 
              caption = "Source: Bureau of Alcohol, Tobacco, Firearms and Explosives (ATF)")
+      
+      #ggplotly(plot)
+      plot
   })
   
   output$table <- renderDataTable({
