@@ -1,3 +1,10 @@
+#   -----
+#   TO DO:
+# Add *disclaimer at bottom of data table for why %'s don't add to 100. 
+# Change labs to say; "Guns recovered IN/ Guns Recovered FROM X State.)
+# Adjust point scaling. 
+#   -----
+
 library(shiny)
 #For collapsable html panels
 library(shinyBS)
@@ -16,7 +23,9 @@ data <- read_rds("data/combined2010to2020.rds") |>
   mutate(Source_State = if_else(Source_State == 'Total', 'United States', Source_State)) |>
   #Filter out Guam and Virigin Islands because of lack of available population data.
   filter(! Source_State %in% c("Guam", "Virgin Islands")) |>
-  filter(! Recovery_State %in% c("Guam", "Virgin Islands"))
+  filter(! Recovery_State %in% c("Guam", "Virgin Islands", "Canada")) |>
+  #Remove topline summary of total guns recovered in U.S
+  filter(!(Recovery_State == 'United States' & Source_State == 'United States'))
 
 #Adjust gun data to be per 100k people. 
 pop_data <- read_rds("data/state-populations-2010-2020.rds") |>
@@ -24,7 +33,10 @@ pop_data <- read_rds("data/state-populations-2010-2020.rds") |>
   mutate(Year = as.numeric(Year)) |>
   as.data.frame()
 
-data <- left_join(data, pop_data, by = c('Source_State' = 'State', 'Year' = 'Year')) |>
+inflow_data <- left_join(data, pop_data, by = c('Source_State' = 'State', 'Year' = 'Year')) |>
+  mutate(Guns_Recovered_PerCapita = (Guns_Recovered * 100000) / Population)
+
+outflow_data <- left_join(data, pop_data, by = c('Recovery_State' = 'State', 'Year' = 'Year')) |>
   mutate(Guns_Recovered_PerCapita = (Guns_Recovered * 100000) / Population)
 
 #Render state geoms
@@ -40,9 +52,11 @@ ui <- fluidPage(
   "Gun FlowR",
   tabPanel("Portal", fluidRow(
     column(4,
+           radioButtons(inputId = "inout", "Gun inflow or outflow?",
+                        choices = list("Inflow" = 1, "Outflow" = 2), selected = 1),
            selectInput(inputId = "state",
                        label = "Select state:",
-                       choices = as.list(unique(data$Source_State)),
+                       choices = as.list(unique(data$Recovery_State)),
                        selected = list('United States')),
            selectInput(inputId = "year",
                        label = "Select year:",
@@ -62,19 +76,23 @@ ui <- fluidPage(
     ),
     column(8,
            plotOutput(outputId = "plot")
-    ), 
+    )
   ),
   fluidRow(
     column(12,
            bsCollapsePanel(
              title = "Detailed gun flow data ⌄", 
              dataTableOutput(outputId = 'table'),
-             downloadButton("downloadData", "Download")
+             downloadButton("downloadData", "Download"),
+             p(""),
+             p("*Disclaimers:"),
+             p("1. Percentages will not sum to 100% if less than 50 states are returned, and U.S territories are excluded."),
+             p("2. Per capita statistics are calculated in terms of the source state."),
+             p("3. All Data is sourced from the ATF Gun Summary Statistics.")
            )
     )
   )),
   tabPanel("Action", "filler"),
-  tabPanel("Experimental", "filler"),
   tabPanel("About", "filler")
   )
 )
@@ -82,25 +100,25 @@ ui <- fluidPage(
 server <- function(input, output){
   gunFlowData <- reactive({
     toArrange <- NULL
-    if (input$state == 'United States'){
-      toArrange <- data |>
+    #Gun inflow (what states do guns come FROM). 
+    if (input$inout == 1) {
+      i <- inflow_data |>
         filter(Source_State != 'United States') |>
-        group_by(Recovery_State, Year) |>
-        arrange(desc(Guns_Recovered)) |>
         filter(Recovery_State == input$state, Year == input$year) |>
         mutate(Guns_Recovered_Pct = Guns_Recovered / sum(Guns_Recovered)) |>
         mutate(Guns_Recovered_Pct_PerCapita = Guns_Recovered_PerCapita / sum(Guns_Recovered_PerCapita)) |>
         select(Year, Recovery_State, Source_State, Guns_Recovered, Guns_Recovered_Pct, Guns_Recovered_PerCapita, Guns_Recovered_Pct_PerCapita)
-      #display guns recovered from an individual state
+        
+      toArrange <- left_join(i, get_urbn_labels(map = 'territories'), by = c('Source_State' = 'state_name'))
     } else {
-      toArrange <- data |>
-        filter(Source_State != 'United States') |>
-        filter(Recovery_State == input$state, Year == input$year) |>
-        group_by(Recovery_State, Year) |>
-        arrange(desc(Guns_Recovered)) |>
+      #Gun outflow (what states do guns go TO).
+      o <- outflow_data |>
+        filter(Source_State == input$state, Year == input$year) |>
         mutate(Guns_Recovered_Pct = Guns_Recovered / sum(Guns_Recovered)) |>
         mutate(Guns_Recovered_Pct_PerCapita = Guns_Recovered_PerCapita / sum(Guns_Recovered_PerCapita)) |>
         select(Year, Recovery_State, Source_State, Guns_Recovered, Guns_Recovered_Pct, Guns_Recovered_PerCapita, Guns_Recovered_Pct_PerCapita)
+      
+      toArrange <- left_join(o, get_urbn_labels(map = 'territories'), by = c('Recovery_State' = 'state_name'))
     }
     #Determine if data should be arranged by per capita or raw values. 
     if (input$perCapita) {
@@ -112,11 +130,11 @@ server <- function(input, output){
   })
   output$plot <- renderPlot({
       #gunFlowData() is the data stored in reactive expression
-      combined <- left_join(gunFlowData(), get_urbn_labels(map = 'territories'), by = c('Source_State' = 'state_name'))
+      viz_data <- gunFlowData()
       
       #Determine whether or not to exclude Recovery State 
       if (input$excludeRecovery) {
-        combined <- combined |> filter(Source_State != Recovery_State)
+        viz_data <- viz_data |> filter(Source_State != Recovery_State)
       }
       #Determine if data should be arranged by per capita or raw values. 
       sizingCol <- ''
@@ -127,7 +145,7 @@ server <- function(input, output){
       } else {
         sizingCol = 'Guns_Recovered'
       }
-      combined <- combined |> head(input$numStates)
+      viz_data <- viz_data |> head(input$numStates)
       
       #Determine how to color map (color entire U.S or one state)
       if (input$state == 'United States') {
@@ -140,7 +158,7 @@ server <- function(input, output){
       plot <- ggplot() +
         geom_polygon(data = map, aes(x = long, y = lat, group = group, fill = is_colored), color = '#ffffff') +
         scale_fill_manual(values = c('#C0C0C0', '#AF251F')) +
-        geom_point(data = combined, aes_string(x = 'long', y = 'lat', size = sizingCol)) +
+        geom_point(data = viz_data, aes_string(x = 'long', y = 'lat', size = sizingCol)) +
         scale_size_area() +
         coord_map(projection = "albers", lat0 = 39, lat1 = 45) +
         theme(panel.background = element_blank(), 
@@ -159,7 +177,9 @@ server <- function(input, output){
   })
   
   output$table <- renderDataTable({
-    gunFlowData()
+    gunFlowData() |> 
+      select(-lat, -long, -state_abbv) |>
+      head(input$numStates)
   })
   
   output$downloadData <- downloadHandler(
