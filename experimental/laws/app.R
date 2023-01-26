@@ -1,6 +1,7 @@
 library(shiny)
 library(tidyverse)
 library(heatmaply)
+library(scales)
 
 setwd('/Users/rsouthward/Desktop/Personal-Projects/gun-violence')
 
@@ -75,7 +76,7 @@ provisions <- provisions |>
   
   matching <- left_join(matching, density, by = c('Provision_Name' = 'Provision_Name')) |>
     select(-Total_Guns_Recovered)
-
+  
 ui <- fluidPage(
   fluidRow(
     column(12, 
@@ -104,8 +105,16 @@ ui <- fluidPage(
 )
 
 server <- function(input, output) {
+  adjReactive <- reactive({
+    adj_data <- left_join(state_adjacency, abb_name_matching, by = c("StateCode" = "abb"))
+    adj_states <- left_join(adj_data, abb_name_matching, by = c("NeighborStateCode" ="abb")) |>
+      select(3:4) |>
+      rename("State" = "name.x", "Neighbor" = "name.y") |>
+      filter(State == input$state) |>
+      pull(Neighbor)
+  })
+  
   provReactive <- reactive({
-    
     ui_partial <- provision_data |>
       filter(Year == input$year, Recovery_State == input$state)
     
@@ -141,22 +150,34 @@ server <- function(input, output) {
   })
   
   output$provisions <- renderPlotly({
-    
     provision_matrix <- provReactive() |>
       select(Provision_Number, Source_State, Status_Code) |>
       mutate(Status_Code = as.character(Status_Code)) |>
       mutate(Status_Code = ifelse(Status_Code == "No Data", NA, Status_Code)) |>
       mutate(Status_Code = ifelse(Status_Code == "Missing Provision", 0, 1)) |>
       pivot_wider(id_cols = Source_State, names_from = Provision_Number, values_from = Status_Code) |>
-      column_to_rownames("Source_State")
+      column_to_rownames("Source_State") 
+    
+    #Reorder by provision number. 
+      provision_matrix <- provision_matrix |> select(sapply(1:length(colnames(provision_matrix)), function(x) as.character(x)))
+      
+      #Convert cell values to provision numbers. 
+      provision_descriptions <- provision_matrix
+      for (row in rownames(provision_descriptions)) {
+        provision_descriptions[row,] <- seq(from = 1, to = ncol(provision_descriptions), by = 1)
+      }
+      provision_descriptions[] <- lapply(provision_descriptions, function(x) matching$Provision_Description[match(x, matching$Provision_Number)])
 
-    # if (clickData()$x) {
-    #   provision_matrix[clickData()$x, clickData()$y] <- 3
-    # }
+      #See which adjacent states are within the top n of guns sourced and which are not. 
+      adj_row_colors <- data.frame(State = rownames(provision_matrix)) |>
+        mutate(rc = if_else(State %in% adjReactive(), 'Neighboring State', 'Non-Neighboring State')) |>
+        mutate(rc = if_else(State == input$state, 'Recovery State', rc))
+
+    hm <- heatmaply(provision_matrix, Rowv = FALSE, Colv = FALSE, plot_method = "plotly", 
+                    showticklabels = c(FALSE, TRUE), colors = c('#dedcdc', '#AF251F'), row_side_colors = data.frame(Relationship = adj_row_colors$rc), 
+                    hide_colorbar = TRUE, custom_hovertext = provision_descriptions)
     
-    hm <- heatmaply(provision_matrix, Rowv = FALSE, Colv = FALSE, plot_method = "plotly", showticklabels = c(FALSE, TRUE))
-    
-    ggplotly(hm)
+    hm
   })
   
   output$gunTotals <- renderPlotly({
@@ -168,12 +189,15 @@ server <- function(input, output) {
     }
     line_data <- density |> 
       arrange(desc(Total_Guns_Recovered)) |>
-      mutate(color = if_else(Provision_Number == h, 1, 0))
+      mutate(color = if_else(Provision_Number == h, 1, 0)) |>
+      mutate(color = as.factor(color))
     
     line <- ggplot() +
       #scale_x_continuous(breaks = seq(from = 1, to = length(matching$Provision_Name), by = 4)) +
       #Make sure if its for entire united states, no scientific notation!
       geom_point(data = line_data, mapping = aes(x = Provision_Number, y = Total_Guns_Recovered, color = color)) +
+      scale_color_manual(values = c('#C0C0C0', '#AF251F')) +
+      scale_y_continuous(labels = label_number()) +
       theme(legend.position = "none")
     
     line
